@@ -130,6 +130,7 @@ export function createWebhooksRouter(store: PaymentStore, shopify: ShopifyClient
             await shopifyPayments.resolvePaymentSession(
               payment.shopifyPaymentSessionGid || payment.shopifyPaymentSessionId,
               payment.payChargeId || event.chargeId || payment.payReference || "pay",
+              payment.shopifyShopDomain || undefined,
             );
           } else {
             await shopify.markOrderPaid(

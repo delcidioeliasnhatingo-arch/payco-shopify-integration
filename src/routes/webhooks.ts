@@ -3,6 +3,7 @@ import { Router } from "express";
 import { config, hasWebhookSecret } from "../config.js";
 import { PaymentStore } from "../database/store.js";
 import { ShopifyClient } from "../shopify/client.js";
+import { ShopifyPaymentsClient } from "../shopify/payments.js";
 
 function asRecord(value: unknown): Record<string, any> {
   return value && typeof value === "object" ? (value as Record<string, any>) : {};
@@ -68,7 +69,7 @@ function isOldEvent(timestamp: string, toleranceSeconds: number): boolean {
   return Math.abs(Date.now() - eventTime) > toleranceSeconds * 1000;
 }
 
-export function createWebhooksRouter(store: PaymentStore, shopify: ShopifyClient): Router {
+export function createWebhooksRouter(store: PaymentStore, shopify: ShopifyClient, shopifyPayments: ShopifyPaymentsClient): Router {
   const router = Router();
 
   router.post("/pay", async (req, res, next) => {
@@ -125,12 +126,19 @@ export function createWebhooksRouter(store: PaymentStore, shopify: ShopifyClient
       const normalizedType = event.eventType.toLowerCase();
       if (["payment.succeeded", "payment_success", "succeeded"].includes(normalizedType)) {
         if (payment.status !== "succeeded") {
-          await shopify.markOrderPaid(
-            payment.shopifyOrderId,
-            ((payment.amountMinor || 0) / 100).toFixed(2),
-            payment.currency || "MZN",
-            payment.payChargeId || event.chargeId || "pay",
-          );
+          if (payment.shopifyPaymentSessionId) {
+            await shopifyPayments.resolvePaymentSession(
+              payment.shopifyPaymentSessionGid || payment.shopifyPaymentSessionId,
+              payment.payChargeId || event.chargeId || payment.payReference || "pay",
+            );
+          } else {
+            await shopify.markOrderPaid(
+              payment.shopifyOrderId,
+              ((payment.amountMinor || 0) / 100).toFixed(2),
+              payment.currency || "MZN",
+              payment.payChargeId || event.chargeId || "pay",
+            );
+          }
           store.updatePayment(payment.id, {
             status: "succeeded",
             completedAt: new Date().toISOString(),

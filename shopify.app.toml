@@ -4,6 +4,11 @@ application_url = "https://payco-shopify-production.onrender.com/"
 embedded = false
 handle = "aveart-payco-mz"
 
+[auth]
+redirect_urls = [
+  "https://payco-shopify-production.onrender.com/auth/callback"
+]
+
 [build]
 automatically_update_urls_on_dev = false
 

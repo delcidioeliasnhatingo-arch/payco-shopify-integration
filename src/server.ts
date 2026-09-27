@@ -53,7 +53,7 @@ app.get("/health", (_req, res) => {
 app.use("/api/payments", createPaymentsRouter(store, payco, shopify));
 app.use("/api/charges", createChargesRouter(payco));
 app.use("/payments/shopify", createShopifyPaymentsRouter(store, payco));
-app.use("/webhooks", createWebhooksRouter(store, shopify));
+app.use("/webhooks", createWebhooksRouter(store, shopify, shopifyPayments));
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const statusCode =

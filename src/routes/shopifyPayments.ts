@@ -35,6 +35,11 @@ export function createShopifyPaymentsRouter(store: PaymentStore, payco: PaycoCli
       }
 
       const session = parsed.data;
+      const shopDomain = String(req.header("Shopify-Shop-Domain") || "").toLowerCase();
+      if (!/^[a-z0-9][a-z0-9-]*\\.myshopify\\.com$/.test(shopDomain)) {
+        res.status(400).json({ error: "Shopify-Shop-Domain inválido ou ausente." });
+        return;
+      }
 
       // PAY.co.mz API charges are denominated in MZN. Do not silently
       // convert USD/ZAR/etc. without an explicit FX policy.
@@ -57,6 +62,7 @@ export function createShopifyPaymentsRouter(store: PaymentStore, payco: PaycoCli
         session.gid,
         session.amount,
         session.currency,
+        shopDomain,
       );
 
       const customerName = [

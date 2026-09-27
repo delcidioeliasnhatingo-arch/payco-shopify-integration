@@ -13,7 +13,7 @@ import { createShopifyAuthRouter } from "./routes/shopifyAuth.js";
 const store = new PaymentStore(config.databasePath);
 const payco = new PaycoClient();
 const shopify = new ShopifyClient();
-const shopifyPayments = new ShopifyPaymentsClient();
+const shopifyPayments = new ShopifyPaymentsClient(store);
 const app = express();
 
 app.disable("x-powered-by");

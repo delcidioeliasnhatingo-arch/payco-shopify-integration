@@ -8,6 +8,7 @@ import { createShopifyPaymentsRouter } from "./routes/shopifyPayments.js";
 import { ShopifyPaymentsClient } from "./shopify/payments.js";
 import { ShopifyClient } from "./shopify/client.js";
 import { createShopifyComplianceRouter } from "./routes/shopifyCompliance.js";
+import { createShopifyAuthRouter } from "./routes/shopifyAuth.js";
 
 const store = new PaymentStore(config.databasePath);
 const payco = new PaycoClient();
@@ -54,6 +55,7 @@ app.get("/health", (_req, res) => {
 app.use("/api/payments", createPaymentsRouter(store, payco, shopify));
 app.use("/api/charges", createChargesRouter(payco));
 app.use("/payments/shopify", createShopifyPaymentsRouter(store, payco));
+app.use("/auth", createShopifyAuthRouter(store));
 app.use("/webhooks/shopify-compliance", createShopifyComplianceRouter());
 app.use("/webhooks", createWebhooksRouter(store, shopify, shopifyPayments));
 

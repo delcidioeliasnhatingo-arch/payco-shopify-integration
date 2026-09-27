@@ -33,6 +33,8 @@ export const config = {
     storeDomain: cleanDomain(process.env.SHOPIFY_STORE_DOMAIN),
     apiVersion: process.env.SHOPIFY_API_VERSION || "2024-10",
     accessToken: process.env.SHOPIFY_ACCESS_TOKEN,
+    paymentsAccessToken: process.env.SHOPIFY_PAYMENTS_ACCESS_TOKEN,
+    paymentsApiVersion: process.env.SHOPIFY_PAYMENTS_API_VERSION || "2026-01",
   },
 };
 

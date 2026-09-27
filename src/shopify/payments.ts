@@ -1,4 +1,5 @@
 import { config } from "../config.js";
+import { PaymentStore } from "../database/store.js";
 
 export class ShopifyPaymentsError extends Error {
   statusCode: number;
@@ -12,8 +13,11 @@ export class ShopifyPaymentsError extends Error {
 type PaymentMutation = "resolve" | "reject";
 
 export class ShopifyPaymentsClient {
-  private async graphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
-    if (!config.shopify.storeDomain || !config.shopify.paymentsAccessToken) {
+  constructor(private readonly store: PaymentStore) {}
+  private async graphql<T>(query: string, variables: Record<string, unknown>, shopDomain?: string): Promise<T> {
+    const domain = shopDomain || config.shopify.storeDomain;
+    const accessToken = shopDomain ? this.store.getShopifyAccessToken(shopDomain) : config.shopify.paymentsAccessToken;
+    if (!domain || !accessToken) {
       throw new ShopifyPaymentsError(
         "SHOPIFY_STORE_DOMAIN e SHOPIFY_PAYMENTS_ACCESS_TOKEN precisam estar configurados.",
         503,
@@ -21,13 +25,13 @@ export class ShopifyPaymentsClient {
     }
 
     const response = await fetch(
-      `https://${config.shopify.storeDomain}/payments_apps/api/${config.shopify.paymentsApiVersion}/graphql.json`,
+      `https://${domain}/payments_apps/api/${config.shopify.paymentsApiVersion}/graphql.json`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
-          "X-Shopify-Access-Token": config.shopify.paymentsAccessToken,
+          "X-Shopify-Access-Token": accessToken,
         },
         body: JSON.stringify({ query, variables }),
       },
@@ -51,7 +55,7 @@ export class ShopifyPaymentsClient {
     return body.data as T;
   }
 
-  async resolvePaymentSession(id: string, networkTransactionId: string): Promise<void> {
+  async resolvePaymentSession(id: string, networkTransactionId: string, shopDomain?: string): Promise<void> {
     const query = `mutation Resolve($id: ID!, $networkTransactionId: String) {
       paymentSessionResolve(
         id: $id
@@ -61,12 +65,12 @@ export class ShopifyPaymentsClient {
         userErrors { field message }
       }
     }`;
-    const data: any = await this.graphql(query, { id, networkTransactionId });
+    const data: any = await this.graphql(query, { id, networkTransactionId }, shopDomain);
     const errors = data.paymentSessionResolve?.userErrors || [];
     if (errors.length) throw new ShopifyPaymentsError(errors.map((e: any) => e.message).join("; "), 502);
   }
 
-  async rejectPaymentSession(id: string, message: string): Promise<void> {
+  async rejectPaymentSession(id: string, message: string, shopDomain?: string): Promise<void> {
     const query = `mutation Reject($id: ID!, $reason: PaymentSessionRejectionReasonInput!) {
       paymentSessionReject(id: $id, reason: $reason) {
         paymentSession { id }
@@ -76,7 +80,7 @@ export class ShopifyPaymentsClient {
     const data: any = await this.graphql(query, {
       id,
       reason: { code: "PROCESSING_ERROR", merchantMessage: message.slice(0, 500), source: "NETWORK" },
-    });
+    }, shopDomain);
     const errors = data.paymentSessionReject?.userErrors || [];
     if (errors.length) throw new ShopifyPaymentsError(errors.map((e: any) => e.message).join("; "), 502);
   }

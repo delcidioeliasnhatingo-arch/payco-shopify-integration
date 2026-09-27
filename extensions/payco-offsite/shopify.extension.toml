@@ -1,7 +1,7 @@
-api_version = "2026-01"
+api_version = "2026-07"
+uid = "4f8d0d4d-5a7d-4a9e-9d54-7e7b7f3c8d21"
 
 [[extensions]]
-
 name = "PAY.co.mz Offsite Payments"
 handle = "payco-mz-offsite"
 type = "payments_extension"
@@ -10,17 +10,15 @@ merchant_label = "PAY.co.mz"
 buyer_label = "PAY.co.mz"
 
 payment_session_url = "https://payco-shopify-production.onrender.com/payments/shopify/session"
-
 refund_session_url = "https://payco-shopify-production.onrender.com/payments/shopify/refund"
 
 supported_countries = ["MZ"]
+supported_payment_methods = ["visa"]
 
-supported_payment_methods = ["mpesa", "visa"]
-
-supports_3ds = true
+supports_3ds = false
 supports_installments = false
 supports_deferred_payments = false
-test_mode_available = false
+test_mode_available = true
 
 [[extensions.targeting]]
 target = "payments.offsite.render"

@@ -4,11 +4,14 @@ import { PaymentStore } from "./database/store.js";
 import { PaycoClient } from "./payco/client.js";
 import { createChargesRouter, createPaymentsRouter } from "./routes/payments.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
+import { createShopifyPaymentsRouter } from "./routes/shopifyPayments.js";
+import { ShopifyPaymentsClient } from "./shopify/payments.js";
 import { ShopifyClient } from "./shopify/client.js";
 
 const store = new PaymentStore(config.databasePath);
 const payco = new PaycoClient();
 const shopify = new ShopifyClient();
+const shopifyPayments = new ShopifyPaymentsClient();
 const app = express();
 
 app.disable("x-powered-by");
@@ -25,6 +28,7 @@ app.get("/", (_req, res) => {
       payment: "GET /api/payments/:id",
       charges: "GET /api/charges",
       payWebhook: "POST /webhooks/pay",
+      shopifyPaymentSession: "POST /payments/shopify/session",
     },
   });
 });
@@ -39,6 +43,7 @@ app.get("/health", (_req, res) => {
       paycoWebhookSecret: Boolean(config.payco.webhookSecret),
       shopifyAccessToken: Boolean(config.shopify.accessToken),
       shopifyStoreDomain: Boolean(config.shopify.storeDomain),
+      shopifyPaymentsAccessToken: Boolean(config.shopify.paymentsAccessToken),
       paycoMockMode: config.payco.mockMode,
     },
     timestamp: new Date().toISOString(),
@@ -47,6 +52,7 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/payments", createPaymentsRouter(store, payco, shopify));
 app.use("/api/charges", createChargesRouter(payco));
+app.use("/payments/shopify", createShopifyPaymentsRouter(store, payco));
 app.use("/webhooks", createWebhooksRouter(store, shopify));
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

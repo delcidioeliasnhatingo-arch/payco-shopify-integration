@@ -10,6 +10,7 @@ export interface PaymentRecord {
   shopifyOrderGid: string | null;
   shopifyPaymentSessionId: string | null;
   shopifyPaymentSessionGid: string | null;
+  shopifyShopDomain: string | null;
   payChargeId: string | null;
   payReference: string | null;
   amountMinor: number;
@@ -29,6 +30,7 @@ interface PaymentRow {
   shopify_order_gid: string | null;
   shopify_payment_session_id: string | null;
   shopify_payment_session_gid: string | null;
+  shopify_shop_domain: string | null;
   pay_charge_id: string | null;
   pay_reference: string | null;
   amount_minor: number;
@@ -50,6 +52,7 @@ function mapPayment(row: PaymentRow | undefined): PaymentRecord | null {
     shopifyOrderGid: row.shopify_order_gid,
     shopifyPaymentSessionId: row.shopify_payment_session_id,
     shopifyPaymentSessionGid: row.shopify_payment_session_gid,
+    shopifyShopDomain: row.shopify_shop_domain,
     payChargeId: row.pay_charge_id,
     payReference: row.pay_reference,
     amountMinor: row.amount_minor,
@@ -79,6 +82,7 @@ export class PaymentStore {
         shopify_order_gid TEXT,
         shopify_payment_session_id TEXT UNIQUE,
         shopify_payment_session_gid TEXT,
+        shopify_shop_domain TEXT,
         pay_charge_id TEXT UNIQUE,
         pay_reference TEXT UNIQUE,
         amount_minor INTEGER NOT NULL DEFAULT 0,
@@ -101,6 +105,20 @@ export class PaymentStore {
         error_message TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS shopify_oauth (
+        shop_domain TEXT PRIMARY KEY,
+        access_token TEXT NOT NULL,
+        scope TEXT,
+        installed_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS oauth_states (
+        state TEXT PRIMARY KEY,
+        shop_domain TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS operation_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         operation TEXT NOT NULL,
@@ -113,6 +131,7 @@ export class PaymentStore {
     `);
     this.ensureColumn("payments", "shopify_payment_session_id", "TEXT");
     this.ensureColumn("payments", "shopify_payment_session_gid", "TEXT");
+    this.ensureColumn("payments", "shopify_shop_domain", "TEXT");
   }
 
   private ensureColumn(table: string, column: string, definition: string): void {
@@ -176,15 +195,38 @@ export class PaymentStore {
     return reserve();
   }
 
-  reserveShopifyPaymentSession(sessionId: string, sessionGid: string, amount: string, currency: string): PaymentRecord {
+  getShopifyAccessToken(shopDomain: string): string | null {
+    const row = this.db.prepare("SELECT access_token FROM shopify_oauth WHERE shop_domain = ?").get(shopDomain) as { access_token: string } | undefined;
+    return row?.access_token || null;
+  }
+
+  saveShopifyOAuth(shopDomain: string, accessToken: string, scope: string | null): void {
+    const now = new Date().toISOString();
+    this.db.prepare(`INSERT INTO shopify_oauth (shop_domain, access_token, scope, installed_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(shop_domain) DO UPDATE SET access_token=excluded.access_token, scope=excluded.scope, updated_at=excluded.updated_at`).run(shopDomain, accessToken, scope, now, now);
+  }
+
+  createOAuthState(state: string, shopDomain: string, expiresAt: string): void {
+    this.db.prepare("INSERT INTO oauth_states (state, shop_domain, expires_at) VALUES (?, ?, ?)").run(state, shopDomain, expiresAt);
+  }
+
+  consumeOAuthState(state: string): string | null {
+    const row = this.db.prepare("SELECT shop_domain, expires_at FROM oauth_states WHERE state = ?").get(state) as { shop_domain: string; expires_at: string } | undefined;
+    this.db.prepare("DELETE FROM oauth_states WHERE state = ?").run(state);
+    if (!row || new Date(row.expires_at).getTime() < Date.now()) return null;
+    return row.shop_domain;
+  }
+
+  reserveShopifyPaymentSession(sessionId: string, sessionGid: string, amount: string, currency: string, shopDomain?: string): PaymentRecord {
     const existing = this.getPaymentByShopifySessionId(sessionId);
     if (existing) return existing;
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO payments
-        (shopify_order_id, shopify_order_gid, shopify_payment_session_id, shopify_payment_session_gid, amount_minor, currency, payment_method, status, created_at, updated_at)
-      VALUES (?, NULL, ?, ?, ?, ?, 'card', 'creating', ?, ?)
-    `).run(`payment-session:${sessionId}`, sessionId, sessionGid, Math.round(Number(amount) * 100), currency.toUpperCase(), now, now);
+        (shopify_order_id, shopify_order_gid, shopify_payment_session_id, shopify_payment_session_gid, shopify_shop_domain, amount_minor, currency, payment_method, status, created_at, updated_at)
+      VALUES (?, NULL, ?, ?, ?, ?, ?, 'card', 'creating', ?, ?)
+    `).run(`payment-session:${sessionId}`, sessionId, sessionGid, shopDomain || null, Math.round(Number(amount) * 100), currency.toUpperCase(), now, now);
     return this.getPaymentByShopifySessionId(sessionId)!;
   }
 
@@ -213,6 +255,7 @@ export class PaymentStore {
       shopifyOrderGid: "shopify_order_gid",
       shopifyPaymentSessionId: "shopify_payment_session_id",
       shopifyPaymentSessionGid: "shopify_payment_session_gid",
+      shopifyShopDomain: "shopify_shop_domain",
       amountMinor: "amount_minor",
       currency: "currency",
       paymentMethod: "payment_method",

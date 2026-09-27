@@ -18,7 +18,7 @@ supported_payment_methods = ["visa"]
 supports_3ds = false
 supports_installments = false
 supports_deferred_payments = false
-test_mode_available = true
+test_mode_available = false
 
 [[extensions.targeting]]
 target = "payments.offsite.render"

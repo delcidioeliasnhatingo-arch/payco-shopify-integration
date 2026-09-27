@@ -109,6 +109,12 @@ export class PaymentStore {
     return mapPayment(this.db.prepare("SELECT * FROM payments WHERE id = ?").get(id) as PaymentRow | undefined);
   }
 
+  getPaymentByShopifySessionId(sessionId: string): PaymentRecord | null {
+    return mapPayment(
+      this.db.prepare("SELECT * FROM payments WHERE shopify_payment_session_id = ?").get(sessionId) as PaymentRow | undefined,
+    );
+  }
+
   getPaymentByShopifyOrderId(orderId: string): PaymentRecord | null {
     return mapPayment(
       this.db.prepare("SELECT * FROM payments WHERE shopify_order_id = ?").get(orderId) as PaymentRow | undefined,
@@ -153,12 +159,26 @@ export class PaymentStore {
     return reserve();
   }
 
+  reserveShopifyPaymentSession(sessionId: string, sessionGid: string, amount: string, currency: string): PaymentRecord {
+    const existing = this.getPaymentByShopifySessionId(sessionId);
+    if (existing) return existing;
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO payments
+        (shopify_order_id, shopify_order_gid, shopify_payment_session_id, shopify_payment_session_gid, amount_minor, currency, payment_method, status, created_at, updated_at)
+      VALUES (?, NULL, ?, ?, ?, ?, 'card', 'creating', ?, ?)
+    `).run(`payment-session:${sessionId}`, sessionId, sessionGid, Math.round(Number(amount) * 100), currency.toUpperCase(), now, now);
+    return this.getPaymentByShopifySessionId(sessionId)!;
+  }
+
   updatePayment(
     id: number,
     values: Partial<{
       payChargeId: string | null;
       payReference: string | null;
       shopifyOrderGid: string | null;
+      shopifyPaymentSessionId: string | null;
+      shopifyPaymentSessionGid: string | null;
       amountMinor: number;
       currency: string | null;
       paymentMethod: string | null;
@@ -174,6 +194,8 @@ export class PaymentStore {
       payChargeId: "pay_charge_id",
       payReference: "pay_reference",
       shopifyOrderGid: "shopify_order_gid",
+      shopifyPaymentSessionId: "shopify_payment_session_id",
+      shopifyPaymentSessionGid: "shopify_payment_session_gid",
       amountMinor: "amount_minor",
       currency: "currency",
       paymentMethod: "payment_method",

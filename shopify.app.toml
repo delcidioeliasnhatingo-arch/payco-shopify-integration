@@ -1,0 +1,16 @@
+name = "AVEART PAY.co.mz"
+client_id = "ba5997342712bed90c2c0a4e5205eeff"
+application_url = "https://payco-shopify-production.onrender.com/"
+embedded = false
+handle = "aveart-payco-mz"
+
+[access_scopes]
+scopes = "write_payment_gateways,write_payment_sessions"
+
+[auth]
+redirect_urls = [
+  "https://payco-shopify-production.onrender.com/auth/callback"
+]
+
+[build]
+automatically_update_urls_on_dev = false

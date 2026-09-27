@@ -14,44 +14,43 @@ function timingSafeEqualHex(expected: string, received: string): boolean {
   return expectedBuffer.length > 0 && expectedBuffer.length === receivedBuffer.length && crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
 }
 
-function signatureCandidates(header: string): string[] {
-  const values = [header];
+function parseSignature(header: string): { timestamp?: string; signatures: string[] } {
+  const signatures: string[] = [];
+  let timestamp: string | undefined;
   for (const part of header.split(",")) {
     const [key, value] = part.trim().split("=", 2);
-    if (["v1", "sha256", "signature", "sig"].includes(key) && value) values.push(value);
+    if (!value) continue;
+    if (key === "t") timestamp = value;
+    if (["v1", "sha256", "signature", "sig"].includes(key)) signatures.push(value.replace(/^sha256=/i, "").trim());
   }
-  return values.map((value) => value.replace(/^sha256=/i, "").trim()).filter(Boolean);
+  if (!signatures.length) signatures.push(header.replace(/^sha256=/i, "").trim());
+  return { timestamp, signatures: signatures.filter(Boolean) };
 }
 
-function verifySignature(rawBody: Buffer, header: string | undefined, timestamp: string | undefined): boolean {
-  if (!hasWebhookSecret() || !header) return false;
+function verifySignature(rawBody: Buffer, header: string | undefined): { valid: boolean; timestamp?: string } {
+  if (!hasWebhookSecret() || !header) return { valid: false };
+  const { timestamp, signatures } = parseSignature(header);
   const secret = config.payco.webhookSecret!;
   const signedValues = [
     rawBody,
     ...(timestamp ? [Buffer.from(`${timestamp}.${rawBody.toString("utf8")}`)] : []),
   ];
-  const candidates = signatureCandidates(header);
-  return signedValues.some((value) => {
+  const valid = signedValues.some((value) => {
     const expected = crypto.createHmac("sha256", secret).update(value).digest("hex");
-    return candidates.some((candidate) => timingSafeEqualHex(expected, candidate));
+    return signatures.some((candidate) => timingSafeEqualHex(expected, candidate));
   });
+  return { valid, timestamp };
 }
 
 function extractEvent(payload: Record<string, any>, headers: Record<string, any>) {
-  const nested = asRecord(payload.data?.object || payload.data || payload.object);
-  const eventType = String(payload.type || payload.event || payload.name || payload.event_type || nested.type || "unknown");
+  const data = asRecord(payload.data);
+  const eventType = String(headers["x-pay-event"] || payload.event || payload.type || payload.name || payload.event_type || "unknown");
   const eventId = String(headers["x-pay-event-id"] || payload.event_id || payload.eventId || payload.id || "");
-  const timestamp = String(headers["x-pay-timestamp"] || payload.timestamp || payload.created_at || payload.createdAt || "");
-  const chargeId = [nested.id, nested.charge_id, nested.chargeId, payload.charge_id, payload.chargeId]
+  const timestamp = String(payload.created_at || payload.createdAt || "");
+  const chargeId = [data.id, data.charge_id, data.chargeId, payload.charge_id, payload.chargeId]
     .find((value) => typeof value === "string" || typeof value === "number");
-  const reference = [
-    nested.reference,
-    nested.merchant_reference,
-    nested.merchantReference,
-    nested.metadata?.reference,
-    nested.metadata?.shopify_order_id,
-    payload.reference,
-  ].find((value) => typeof value === "string" || typeof value === "number");
+  const reference = [data.reference, data.transaction_reference, data.merchant_reference, payload.reference]
+    .find((value) => typeof value === "string" || typeof value === "number");
   return {
     eventId,
     eventType,
@@ -75,13 +74,14 @@ export function createWebhooksRouter(store: PaymentStore, shopify: ShopifyClient
   router.post("/pay", async (req, res, next) => {
     const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from("");
     const signature = req.header("X-Pay-Signature");
-    const timestamp = req.header("X-Pay-Timestamp");
 
     if (!hasWebhookSecret()) {
       res.status(503).json({ error: "PAYCO_WEBHOOK_SECRET não está configurado." });
       return;
     }
-    if (!verifySignature(rawBody, signature, timestamp)) {
+
+    const verified = verifySignature(rawBody, signature);
+    if (!verified.valid) {
       res.status(401).json({ error: "Assinatura do webhook inválida." });
       return;
     }
@@ -99,7 +99,7 @@ export function createWebhooksRouter(store: PaymentStore, shopify: ShopifyClient
       res.status(400).json({ error: "X-Pay-Event-Id ou id do evento é obrigatório." });
       return;
     }
-    if (isOldEvent(event.timestamp, config.webhookToleranceSeconds)) {
+    if (isOldEvent(verified.timestamp || event.timestamp, config.webhookToleranceSeconds)) {
       res.status(401).json({ error: "Evento antigo rejeitado." });
       return;
     }
@@ -123,9 +123,14 @@ export function createWebhooksRouter(store: PaymentStore, shopify: ShopifyClient
       }
 
       const normalizedType = event.eventType.toLowerCase();
-      if (normalizedType === "payment.succeeded" || normalizedType === "payment_success" || normalizedType === "succeeded") {
+      if (["payment.succeeded", "payment_success", "succeeded"].includes(normalizedType)) {
         if (payment.status !== "succeeded") {
-          await shopify.markOrderPaid(payment.shopifyOrderId, ((payment.amountMinor || 0) / 100).toFixed(2), payment.currency || "MZN", payment.payChargeId || event.chargeId || "pay");
+          await shopify.markOrderPaid(
+            payment.shopifyOrderId,
+            ((payment.amountMinor || 0) / 100).toFixed(2),
+            payment.currency || "MZN",
+            payment.payChargeId || event.chargeId || "pay",
+          );
           store.updatePayment(payment.id, {
             status: "succeeded",
             completedAt: new Date().toISOString(),
@@ -133,7 +138,7 @@ export function createWebhooksRouter(store: PaymentStore, shopify: ShopifyClient
           });
           store.log("webhook.pay", "info", "Pagamento confirmado e pedido Shopify atualizado.", String(payment.id), event);
         }
-      } else if (normalizedType === "payment.failed" || normalizedType === "payment_failed" || normalizedType === "failed") {
+      } else if (["payment.failed", "payment_failed", "failed"].includes(normalizedType)) {
         store.updatePayment(payment.id, {
           status: "failed",
           failureReason: String(asRecord(payload.data).failure_reason || payload.failure_reason || "Pagamento recusado pela PAY."),

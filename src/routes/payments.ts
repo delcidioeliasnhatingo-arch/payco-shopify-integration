@@ -8,13 +8,11 @@ import { ShopifyClient } from "../shopify/client.js";
 const paymentRequestSchema = z.object({
   shopifyOrderId: z.union([z.string(), z.number()]).transform(String),
   paymentMethod: z.enum(["mpesa", "mkesh", "card"]).default("mpesa"),
-  customer: z
-    .object({
-      name: z.string().trim().max(120).optional(),
-      email: z.string().email().optional(),
-      phone: z.string().trim().max(40).optional(),
-    })
-    .optional(),
+  customer: z.object({
+    name: z.string().trim().max(120).optional(),
+    email: z.string().email().optional(),
+    phone: z.string().trim().max(40).optional(),
+  }).optional(),
 });
 
 function publicPayment(payment: ReturnType<PaymentStore["getPaymentById"]>) {
@@ -70,23 +68,19 @@ export function createPaymentsRouter(store: PaymentStore, payco: PaycoClient, sh
       const payment = reservation.payment;
       try {
         const order = await shopify.getOrder(parsed.data.shopifyOrderId);
+        const customer = parsed.data.customer || order.customer;
+
         store.updatePayment(payment.id, {
           shopifyOrderGid: order.gid,
           amountMinor: Math.round(Number(order.amount) * 100),
           currency: order.currency,
         });
 
-        const reference = `shopify-order-${order.id}`;
-        const baseUrl = config.appBaseUrl || `${req.protocol}://${req.get("host")}`;
         const charge = await payco.createCharge({
           amount: order.amount,
-          currency: order.currency,
           method: parsed.data.paymentMethod,
-          reference,
-          description: `Pagamento Shopify #${order.id}`,
-          returnUrl: `${baseUrl}/payment-return`,
-          callbackUrl: `${baseUrl}/webhooks/pay`,
-          customer: parsed.data.customer || order.customer,
+          idempotencyKey: `shopify-order-${order.id}`,
+          customer,
         });
 
         const updated = store.updatePayment(payment.id, {
@@ -102,6 +96,7 @@ export function createPaymentsRouter(store: PaymentStore, payco: PaycoClient, sh
         store.log("payment.create", "info", "Cobrança criada na PAY.", String(payment.id), {
           orderId: order.id,
           chargeId: charge.id,
+          reference: charge.reference,
           method: parsed.data.paymentMethod,
         });
         res.status(201).json({ payment: publicPayment(updated) });

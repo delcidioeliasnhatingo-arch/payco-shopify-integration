@@ -3,12 +3,8 @@ import { config } from "../config.js";
 
 export interface PayChargeInput {
   amount: string;
-  currency: string;
-  method: string;
-  reference: string;
-  description: string;
-  returnUrl: string;
-  callbackUrl: string;
+  method: "mpesa" | "mkesh" | "card";
+  idempotencyKey: string;
   customer?: {
     name?: string;
     email?: string;
@@ -50,33 +46,47 @@ export class PaycoClient {
       const id = `mock_${crypto.randomUUID()}`;
       return {
         id,
-        reference: input.reference,
-        checkoutUrl: `${config.appBaseUrl || "http://localhost:5000"}/mock/pay/${encodeURIComponent(input.reference)}`,
+        reference: input.idempotencyKey,
+        checkoutUrl: `${config.appBaseUrl || "http://localhost:5000"}/mock/pay/${encodeURIComponent(input.idempotencyKey)}`,
         status: "pending",
         raw: { mock: true, id, ...input },
       };
     }
 
+    const customerName = input.customer?.name;
+    const customerContact = input.method === "card"
+      ? input.customer?.email || input.customer?.phone
+      : input.customer?.phone;
+
+    if (!customerContact) {
+      throw new PaycoError(
+        input.method === "card"
+          ? "É necessário o e-mail ou telefone do cliente para criar o pagamento por cartão."
+          : "É necessário o telefone do cliente para criar o pagamento móvel.",
+        400,
+      );
+    }
+
     const response = await this.request("/charges", {
       method: "POST",
+      headers: {
+        "Idempotency-Key": input.idempotencyKey,
+      },
       body: JSON.stringify({
-        merchant_id: config.payco.merchantId,
-        wallet_id: config.payco.walletId,
-        amount: input.amount,
-        currency: input.currency,
         method: input.method,
-        reference: input.reference,
-        description: input.description,
-        return_url: input.returnUrl,
-        callback_url: input.callbackUrl,
-        customer: input.customer,
+        amount: Number(input.amount),
+        customer_name: customerName,
+        customer_contact: customerContact,
+        wallet_id: config.payco.walletId,
       }),
     });
 
     const root = asRecord(response);
     const data = asRecord(root.data || root.charge || root);
-    const id = firstString(data.id, data.charge_id, data.chargeId, root.id, root.charge_id);
-    const reference = firstString(data.reference, data.merchant_reference, input.reference) || input.reference;
+    const reference =
+      firstString(data.reference, data.transaction_reference, data.merchant_reference) || input.idempotencyKey;
+    const id =
+      firstString(data.id, data.charge_id, data.chargeId, data.transaction_reference, reference) || reference;
     const checkoutUrl = firstString(
       data.checkout_url,
       data.checkoutUrl,
@@ -86,15 +96,15 @@ export class PaycoClient {
       root.payment_url,
     );
 
-    if (!id || !checkoutUrl) {
-      throw new PaycoError("A resposta da PAY não contém id ou checkout_url.", 502, response);
+    if (!checkoutUrl) {
+      throw new PaycoError("A resposta da PAY não contém checkout_url.", 502, response);
     }
 
     return {
       id,
       reference,
       checkoutUrl,
-      status: firstString(data.status, root.status) || "pending",
+      status: firstString(data.status, data.state, root.status) || "pending",
       raw: response,
     };
   }
@@ -117,7 +127,8 @@ export class PaycoClient {
           Accept: "application/json",
           "Content-Type": "application/json",
           Authorization: `Bearer ${config.payco.apiKey}`,
-          "X-API-Key": config.payco.apiKey,
+          "X-Merchant-Id": config.payco.merchantId,
+          "X-Wallet-Id": config.payco.walletId,
           ...(init.headers || {}),
         },
       });

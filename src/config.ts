@@ -31,6 +31,7 @@ export const config = {
   },
   shopify: {
     storeDomain: cleanDomain(process.env.SHOPIFY_STORE_DOMAIN),
+    appHmacKey: process.env.SHOPIFY_APP_HMAC_KEY,
     apiVersion: process.env.SHOPIFY_API_VERSION || "2024-10",
     accessToken: process.env.SHOPIFY_ACCESS_TOKEN,
     paymentsAccessToken: process.env.SHOPIFY_PAYMENTS_ACCESS_TOKEN,

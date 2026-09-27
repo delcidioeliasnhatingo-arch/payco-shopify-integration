@@ -8,6 +8,8 @@ export interface PaymentRecord {
   id: number;
   shopifyOrderId: string;
   shopifyOrderGid: string | null;
+  shopifyPaymentSessionId: string | null;
+  shopifyPaymentSessionGid: string | null;
   payChargeId: string | null;
   payReference: string | null;
   amountMinor: number;
@@ -25,6 +27,8 @@ interface PaymentRow {
   id: number;
   shopify_order_id: string;
   shopify_order_gid: string | null;
+  shopify_payment_session_id: string | null;
+  shopify_payment_session_gid: string | null;
   pay_charge_id: string | null;
   pay_reference: string | null;
   amount_minor: number;
@@ -44,6 +48,8 @@ function mapPayment(row: PaymentRow | undefined): PaymentRecord | null {
     id: row.id,
     shopifyOrderId: row.shopify_order_id,
     shopifyOrderGid: row.shopify_order_gid,
+    shopifyPaymentSessionId: row.shopify_payment_session_id,
+    shopifyPaymentSessionGid: row.shopify_payment_session_gid,
     payChargeId: row.pay_charge_id,
     payReference: row.pay_reference,
     amountMinor: row.amount_minor,
@@ -71,6 +77,8 @@ export class PaymentStore {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         shopify_order_id TEXT NOT NULL UNIQUE,
         shopify_order_gid TEXT,
+        shopify_payment_session_id TEXT UNIQUE,
+        shopify_payment_session_gid TEXT,
         pay_charge_id TEXT UNIQUE,
         pay_reference TEXT UNIQUE,
         amount_minor INTEGER NOT NULL DEFAULT 0,
@@ -103,6 +111,15 @@ export class PaymentStore {
         created_at TEXT NOT NULL
       );
     `);
+    this.ensureColumn("payments", "shopify_payment_session_id", "TEXT");
+    this.ensureColumn("payments", "shopify_payment_session_gid", "TEXT");
+  }
+
+  private ensureColumn(table: string, column: string, definition: string): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((item) => item.name === column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
   }
 
   getPaymentById(id: number): PaymentRecord | null {

@@ -152,6 +152,9 @@ export class PaycoClient {
     if (!config.payco.apiKey) {
       throw new PaycoError("PAYCO_API_KEY não está configurada.", 503);
     }
+    if (!config.payco.merchantId || !config.payco.walletId) {
+      throw new PaycoError("PAYCO_MERCHANT_ID e PAYCO_WALLET_ID devem ser configurados com os dados da sua conta.", 503);
+    }
 
     let response: Response;
     try {

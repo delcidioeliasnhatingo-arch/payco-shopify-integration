@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: aveart-payco-shopify
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: usd-store-currency-conversion
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PAYCO_MOCK_MODE
+        value: "true"
+      - key: PAYCO_API_BASE_URL
+        value: https://pay.co.mz/api/public/v1
+      - key: DATABASE_PATH
+        value: ./data/payments.db
+      - key: SHOPIFY_API_VERSION
+        value: "2024-10"
+      - key: SHOPIFY_PAYMENTS_API_VERSION
+        value: "2026-01"

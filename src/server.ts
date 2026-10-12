@@ -43,6 +43,7 @@ app.get("/health", (_req, res) => {
     configuration: {
       paycoApiKey: Boolean(config.payco.apiKey),
       paycoWebhookSecret: Boolean(config.payco.webhookSecret),
+      paycoUsdMznRateConfigured: Number.isFinite(config.payco.usdMznRate) && config.payco.usdMznRate > 0,
       shopifyAccessToken: Boolean(config.shopify.accessToken),
       shopifyStoreDomain: Boolean(config.shopify.storeDomain),
       shopifyPaymentsAccessToken: Boolean(config.shopify.paymentsAccessToken),

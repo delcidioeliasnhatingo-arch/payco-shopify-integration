@@ -23,8 +23,9 @@ Copie `.env.example` apenas como referência. No Replit, adicione os valores sen
 As demais variáveis podem ser configuradas como variáveis de ambiente:
 
 - `PAYCO_API_BASE_URL=https://pay.co.mz/api/public/v1`
-- `PAYCO_MERCHANT_ID=8375407039`
-- `PAYCO_WALLET_ID=62048`
+- `PAYCO_MERCHANT_ID` — ID real de 10 dígitos mostrado em Definições no painel PAY.co.mz
+- `PAYCO_WALLET_ID` — ID real de 5 dígitos da carteira PAY.co.mz
+- `PAYCO_USD_MZN_RATE` — taxa confirmada de MZN por 1 USD; necessária para pedidos em USD
 - `SHOPIFY_STORE_DOMAIN=...myshopify.com`
 - `SHOPIFY_API_VERSION=2024-10`
 - `APP_BASE_URL=https://seu-projeto.replit.app`
@@ -79,4 +80,4 @@ PAYCO_MOCK_MODE=true
 
 Ainda é necessário configurar a Shopify para criar uma cobrança real a partir de um pedido. Em produção, mantenha `PAYCO_MOCK_MODE=false`.
 
-O primeiro teste de M-Pesa deve ser feito com valor baixo, pois a API de produção da PAY pode não ter sandbox.
+A API de produção da PAY não tem sandbox para os métodos reais. Não ative pagamentos reais até validar o build, o webhook, as credenciais e a taxa de câmbio. Para pedidos em USD, a conversão é feita no servidor com `PAYCO_USD_MZN_RATE`; a taxa deve ser verificada e atualizada manualmente. O valor original e a moeda original da Shopify são preservados no registo local.

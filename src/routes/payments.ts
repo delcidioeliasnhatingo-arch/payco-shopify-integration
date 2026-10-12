@@ -78,6 +78,7 @@ export function createPaymentsRouter(store: PaymentStore, payco: PaycoClient, sh
 
         const charge = await payco.createCharge({
           amount: order.amount,
+          currency: order.currency,
           method: parsed.data.paymentMethod,
           idempotencyKey: `shopify-order-${order.id}`,
           customer,
@@ -98,6 +99,8 @@ export function createPaymentsRouter(store: PaymentStore, payco: PaycoClient, sh
           chargeId: charge.id,
           reference: charge.reference,
           method: parsed.data.paymentMethod,
+          shopifyAmount: order.amount,
+          shopifyCurrency: order.currency,
         });
         res.status(201).json({ payment: publicPayment(updated) });
       } catch (error) {

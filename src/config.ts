@@ -25,8 +25,10 @@ export const config = {
     apiBaseUrl: (process.env.PAYCO_API_BASE_URL || "https://pay.co.mz/api/public/v1").replace(/\/+$/, ""),
     apiKey: process.env.PAYCO_API_KEY,
     webhookSecret: process.env.PAYCO_WEBHOOK_SECRET,
-    merchantId: process.env.PAYCO_MERCHANT_ID || "8375407039",
-    walletId: process.env.PAYCO_WALLET_ID || "62048",
+    merchantId: process.env.PAYCO_MERCHANT_ID || "",
+    walletId: process.env.PAYCO_WALLET_ID || "",
+    // Set this explicitly in Render using a verified rate; never guess a live FX rate.
+    usdMznRate: numberFromEnv("PAYCO_USD_MZN_RATE", 0),
     mockMode: booleanFromEnv("PAYCO_MOCK_MODE"),
   },
   shopify: {

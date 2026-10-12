@@ -36,17 +36,16 @@ export function createShopifyPaymentsRouter(store: PaymentStore, payco: PaycoCli
 
       const session = parsed.data;
       const shopDomain = String(req.header("Shopify-Shop-Domain") || "").toLowerCase();
-      if (!/^[a-z0-9][a-z0-9-]*\\.myshopify\\.com$/.test(shopDomain)) {
+      if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(shopDomain)) {
         res.status(400).json({ error: "Shopify-Shop-Domain inválido ou ausente." });
         return;
       }
 
-      // PAY.co.mz API charges are denominated in MZN. Do not silently
-      // convert USD/ZAR/etc. without an explicit FX policy.
-      if (session.currency.toUpperCase() !== "MZN") {
+      const currency = session.currency.toUpperCase();
+      if (!["USD", "MZN"].includes(currency)) {
         res.status(422).json({
-          error: "A integração PAY.co.mz requer checkout em MZN. Não é seguro converter moedas automaticamente.",
-          currency: session.currency,
+          error: "A moeda da sessão não é suportada por esta integração. Atualmente são aceites USD e MZN.",
+          currency,
         });
         return;
       }
@@ -61,7 +60,7 @@ export function createShopifyPaymentsRouter(store: PaymentStore, payco: PaycoCli
         session.id,
         session.gid,
         session.amount,
-        session.currency,
+        currency,
         shopDomain,
       );
 
@@ -70,11 +69,10 @@ export function createShopifyPaymentsRouter(store: PaymentStore, payco: PaycoCli
         session.customer?.billing_address?.family_name,
       ].filter(Boolean).join(" ") || undefined;
 
-      const customerContact = session.customer?.email || session.customer?.phone_number;
-      const method = session.payment_method.type === "offsite" ? "card" : "card";
-
+      const method = "card";
       const charge = await payco.createCharge({
         amount: session.amount,
+        currency,
         method,
         idempotencyKey: `shopify-payment-session-${session.id}`,
         customer: { name: customerName, email: session.customer?.email, phone: session.customer?.phone_number },
@@ -83,8 +81,9 @@ export function createShopifyPaymentsRouter(store: PaymentStore, payco: PaycoCli
       store.updatePayment(reserved.id, {
         payChargeId: charge.id,
         payReference: charge.reference,
+        // Keep the original Shopify amount and currency (USD or MZN) for settlement.
         amountMinor: Math.round(Number(session.amount) * 100),
-        currency: session.currency.toUpperCase(),
+        currency,
         paymentMethod: method,
         checkoutUrl: charge.checkoutUrl,
         status: "pending",
